@@ -17,4 +17,5 @@ nor really produce proper BMS traffic. That will come in time.
 
 The easiest approach to compiling this is to use VSCode. Download
 the Raspberry Pi Pico extension. It is able to download all the SDKs
-and compilers for you.
+and compilers for you. You will need to "import" this code as a Pico
+project to get set up.

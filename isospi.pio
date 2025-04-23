@@ -22,7 +22,7 @@ SET PINS BITS_NEUTRAL ;default to line not being driven
 OUT X 1 ;shift one bit from OSR, stalls if no bits available so program will normally be stuck here
 SET PINS BITS_POSITIVE [25] ;got a bit so start CS assert - 26 cycles 12.5 * 26 = 325us
 SET PINS BITS_NEGATIVE [25] ;negative pulse to finish CS assert
-SET PINS BITS_NEUTRAL  [6]; ;give 6 clocks (6 * 12.5 = 75us) between CS and starting to send data bits
+SET PINS BITS_NEUTRAL [16]  ;give some time between CS assert and when we start to send data
 NEXT_BIT:
 JMP !X ZERO_PULSE ;check the bit we grabbed. Is it not set? Then jump, otherwise keep going below (clock #4 of extra delay when looping)
 SET PINS BITS_POSITIVE [9] ;1 bit so send positive pulse first for 10 clocks (10 * 12.5 = 125us)
@@ -35,6 +35,7 @@ AFTER:
 SET PINS BITS_NEUTRAL [31] ;set lines back to neutral for 32 clocks
 SET PINS BITS_NEUTRAL [23] ;set them again to neutral for 24 more (60 clocks = 750us, but there are 4 clocks to go before we get to next bit so allow for them)
 JMP !OSRE GET_BIT ;if we aren't out of data then go to GET_BIT to grab another bit (here is one of those clocks)
+SET PINS BITS_NEUTRAL [5]; neutral for just a little bit before doing the CS deassert
 SET PINS BITS_NEGATIVE [25] ;then do CS deassert (neg long then pos long)
 SET PINS BITS_POSITIVE [25]
 SET PINS BITS_NEUTRAL
@@ -57,18 +58,18 @@ IN PINS 2 ;grab state of both input pins, place them in ISR, automatic transfer 
 
 % c-sdk {
 #include "hardware/gpio.h"
-static inline void pio_isospi_init(PIO pio, uint sm, uint offset, uint tx_base, uint rx_base)
+static inline void pio_isospi_init(PIO pio, uint sm, uint offsetTx, uint offsetRx, uint tx_base, uint rx_base)
 {
-    pio_sm_config c_tx = isospi_tx_program_get_default_config(offset);
+    pio_sm_config c_tx = isospi_tx_program_get_default_config(offsetTx);
     sm_config_set_out_pins(&c_tx, tx_base, 4);
     sm_config_set_set_pins(&c_tx, tx_base, 4);
 
-    //pio_sm_config c_rx = isospi_rx_program_get_default_config(0);
-    //sm_config_set_in_pins(&c_rx, rx_base);
+    pio_sm_config c_rx = isospi_rx_program_get_default_config(offsetRx);
+    sm_config_set_in_pins(&c_rx, rx_base);
     
-    //(shift to left, auto push/pull, threshold=32)
-    sm_config_set_out_shift(&c_tx, false, true, 32);
-    //sm_config_set_in_shift(&c_rx, false, true, 32);
+    //(shift to left, auto push/pull, threshold)
+    sm_config_set_out_shift(&c_tx, false, true, 8); //byte oriented
+    sm_config_set_in_shift(&c_rx, false, true, 32); //stream 2 bits 16x
 
     
     //pio_sm_set_pins_with_mask(pio, sm, 0, (1u << pin_sck) | (1u << pin_mosi));
@@ -78,10 +79,9 @@ static inline void pio_isospi_init(PIO pio, uint sm, uint offset, uint tx_base, 
     pio_gpio_init(pio, tx_base + 2);
     pio_gpio_init(pio, tx_base + 3);
     
-    pio_sm_init(pio, sm, offset, &c_tx);
+    pio_sm_init(pio, sm, offsetTx, &c_tx);
     pio_sm_set_enabled(pio, sm, true);
 
-    //pio_sm_init(pio, 1, 18, &c_rx);
-
+    pio_sm_init(pio, 1, offsetRx, &c_rx);
 }
 %}

@@ -51,6 +51,6 @@ target_sources(model3_isospi PRIVATE
         pio_isospi.h
         )
 
-target_link_libraries(model3_isospi PRIVATE pico_stdlib hardware_pio)
+target_link_libraries(model3_isospi PRIVATE pico_stdlib hardware_pio hardware_dma)
 pico_add_extra_outputs(model3_isospi)
 
