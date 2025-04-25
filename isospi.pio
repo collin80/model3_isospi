@@ -9,7 +9,7 @@
 
 .pio_version 0 // only requires PIO version 0
 .program isospi_tx
-.clock_div 1.5625 ;125 / 1.5625 = 80Mhz
+.clock_div 2.0 ;125 / 2 = 62.5MHz clock
 
 //order of pins from 6,7,8,9 is NN NP PN PP
 //The ?P pins idle high while ?N pins idle low
@@ -20,24 +20,24 @@
 SET PINS BITS_NEUTRAL ;default to line not being driven
 .wrap_target
 OUT X 1 ;shift one bit from OSR, stalls if no bits available so program will normally be stuck here
-SET PINS BITS_POSITIVE [25] ;got a bit so start CS assert - 26 cycles 12.5 * 26 = 325us
-SET PINS BITS_NEGATIVE [25] ;negative pulse to finish CS assert
-SET PINS BITS_NEUTRAL [16]  ;give some time between CS assert and when we start to send data
+SET PINS BITS_POSITIVE [19] ;got a bit so start CS assert - 20 cycles 16 * 20 = 320us
+SET PINS BITS_NEGATIVE [19] ;negative pulse to finish CS assert
+SET PINS BITS_NEUTRAL [12]  ;give some time between CS assert and when we start to send data
 NEXT_BIT:
 JMP !X ZERO_PULSE ;check the bit we grabbed. Is it not set? Then jump, otherwise keep going below (clock #4 of extra delay when looping)
-SET PINS BITS_POSITIVE [9] ;1 bit so send positive pulse first for 10 clocks (10 * 12.5 = 125us)
-SET PINS BITS_NEGATIVE [8] ;send negative pulse for 9 clocks
-JMP AFTER ;spend a clock cycle jumping to AFTER (gives the 10th clock we need for negative signal)
+SET PINS BITS_POSITIVE [7] ;1 bit so send positive pulse first for 8 clocks (8 * 16 = 128us)
+SET PINS BITS_NEGATIVE [6] ;send negative pulse for 7 clocks
+JMP AFTER ;spend a clock cycle jumping to AFTER (gives the extra clock we need for negative signal)
 ZERO_PULSE:
-SET PINS BITS_NEGATIVE [9] ;0 bit so send negative pulse then positive pulse
-SET PINS BITS_POSITIVE [9] ;no jump after this so need that extra clock
+SET PINS BITS_NEGATIVE [7] ;0 bit so send negative pulse then positive pulse
+SET PINS BITS_POSITIVE [7] ;no jump after this so need that extra clock
 AFTER:
-SET PINS BITS_NEUTRAL [31] ;set lines back to neutral for 32 clocks
-SET PINS BITS_NEUTRAL [23] ;set them again to neutral for 24 more (60 clocks = 750us, but there are 4 clocks to go before we get to next bit so allow for them)
+SET PINS BITS_NEUTRAL [29] ;set lines back to neutral for 30 clocks
+SET PINS BITS_NEUTRAL [11] ;set them again to neutral for 12 more (46 clocks = 736us, but there are 4 clocks to go before we get to next bit so allow for them)
 JMP !OSRE GET_BIT ;if we aren't out of data then go to GET_BIT to grab another bit (here is one of those clocks)
 SET PINS BITS_NEUTRAL [5]; neutral for just a little bit before doing the CS deassert
-SET PINS BITS_NEGATIVE [25] ;then do CS deassert (neg long then pos long)
-SET PINS BITS_POSITIVE [25]
+SET PINS BITS_NEGATIVE [19] ;then do CS deassert (neg long then pos long)
+SET PINS BITS_POSITIVE [19]
 SET PINS BITS_NEUTRAL
 .wrap //go back to beginning of main loop
 GET_BIT:
@@ -49,7 +49,7 @@ JMP NEXT_BIT ;Jump back to decision code (Clock #3 of extra delay)
 ; most complicated program I have ever written!
 .program isospi_rx
 .pio_version 0 // only requires PIO version 0
-.clock_div 1.5625 ;125 / 1.5625 = 80Mhz
+.clock_div 2.0
 
 .wrap_target
 IN PINS 2 ;grab state of both input pins, place them in ISR, automatic transfer to FIFO will happen at 32bit boundaries

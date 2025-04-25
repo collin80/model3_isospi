@@ -55,6 +55,24 @@ void read_isospi_arm(PIO pio, uint sm, uint dma_chan, uint32_t *capture_buf, siz
     pio_sm_set_enabled(pio, sm, true);
 }
 
+void print_capture_buf(const uint32_t *buf, uint pin_base, uint pin_count, uint32_t n_samples) {
+    // Display the capture buffer in text form, like this:
+    // 00: __--__--__--__--__--__--
+    // 01: ____----____----____----
+    printf("Capture:\n");
+    uint record_size_bits = 32;
+    for (uint pin = 0; pin < pin_count; ++pin) {
+        printf("%02d: ", pin + pin_base);
+        for (uint32_t sample = 0; sample < n_samples; ++sample) {
+            uint bit_index = pin + sample * pin_count;
+            uint word_index = bit_index / record_size_bits;
+            // Data is left-justified in each FIFO entry, hence the (32 - record_size_bits) offset
+            uint word_mask = 1u << (bit_index % record_size_bits + 32 - record_size_bits);
+            printf(buf[word_index] & word_mask ? "-" : "_");
+        }
+        printf("\n");
+    }
+}
 
 int main() 
 {
@@ -92,10 +110,7 @@ int main()
         read_isospi_arm(pio0, 1, dma_chan, capture_buf, 500, RX_BASE, true);
         isospi_write8_blocking(message, 2);
         dma_channel_wait_for_finish_blocking(dma_chan);
-        for (int j = 0; j < 500; j = j + 5)
-        {
-            printf("%x %x %x %x %x\n", capture_buf[j], capture_buf[j+1], capture_buf[j + 2], capture_buf[j + 3], capture_buf[j + 4]);
-        }
+        print_capture_buf(capture_buf, RX_BASE, 2, 2500);
         sleep_ms(1000);
         printf("About to try a long message\n");
         message[0] = 0x47;
@@ -110,14 +125,10 @@ int main()
 }
 
 /*
-
 To capture a whole 76 byte message we need to handle 76us worth of traffic plus the CS up and down which
 collectively aren't more than an additional 1us. So, 77us worth of traffic. 
 We're capturing at 80Mhz which is 12.5ns so we will be taking around 6160 samples, 16 per 32 bit FIFO
 transfer so 385 transfers and 1540 bytes 
-
-}
-
 */
     
 
