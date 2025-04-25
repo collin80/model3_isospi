@@ -18,18 +18,27 @@
 //connect your RX pins to 10,11
 #define RX_BASE 10
 
+/*polling version of TX code. Try to place as many bytes into FIFO as we can. The FIFO
+is 32 bits but we're only using 8 so that we can send as individual bytes if needed. 
+Many messages are only 2 bytes so we do need this functionality. FIFO should be 4 long
+so we can queue 4 bytes then have to busy wait until we can push in another. 
+*/
 void __time_critical_func(isospi_write8_blocking)(const uint8_t *src, size_t len) {
-    size_t tx_remain = len, rx_remain = len;
-    io_rw_8 *txfifo = (io_rw_8 *) pio0->txf[0];
+    size_t tx_remain = len;
 
-    while (tx_remain /*|| rx_remain*/) {
+    while (tx_remain) {
         if (tx_remain && !pio_sm_is_tx_fifo_full(pio0, 0)) {
-            pio0->txf[0] = (*src++) << 24ul;
+            pio0->txf[0] = (*src++) << 24ul; //we read only from the top byte
             --tx_remain;
         }
     }
 }
 
+/*Here, though, we set up to use the whole 32 bits of each of the 4 FIFO buffers. Capturing
+2 bits at a time (the state of the high/low pulse capture pins). DMA driven so we don't
+have to worry about polling or the fact that this will all be running at the same time
+as the above polling code.
+*/
 void read_isospi_arm(PIO pio, uint sm, uint dma_chan, uint32_t *capture_buf, size_t capture_size_words,
     uint trigger_pin, bool trigger_level)
 {
@@ -40,8 +49,8 @@ void read_isospi_arm(PIO pio, uint sm, uint dma_chan, uint32_t *capture_buf, siz
     pio_sm_restart(pio, sm);
 
     dma_channel_config c = dma_channel_get_default_config(dma_chan);
-    channel_config_set_read_increment(&c, false);
-    channel_config_set_write_increment(&c, true);
+    channel_config_set_read_increment(&c, false); //always read from FIFO which is at a static address
+    channel_config_set_write_increment(&c, true); //but we are going to have to auto increment the pointer into the buffer
     channel_config_set_dreq(&c, pio_get_dreq(pio, sm, false));
 
     dma_channel_configure(dma_chan, &c,
@@ -51,6 +60,7 @@ void read_isospi_arm(PIO pio, uint sm, uint dma_chan, uint32_t *capture_buf, siz
         true                // Start immediately
     );
 
+    //don't actually start up until the RX pins start to transition from the TX going live
     pio_sm_exec(pio, sm, pio_encode_wait_gpio(trigger_level, trigger_pin));
     pio_sm_set_enabled(pio, sm, true);
 }

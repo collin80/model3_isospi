@@ -69,7 +69,8 @@ static inline void pio_isospi_init(PIO pio, uint sm, uint offsetTx, uint offsetR
     
     //(shift to left, auto push/pull, threshold)
     sm_config_set_out_shift(&c_tx, false, true, 8); //byte oriented
-    sm_config_set_in_shift(&c_rx, false, true, 32); //stream 2 bits 16x
+    //this one needs to shift right to line up
+    sm_config_set_in_shift(&c_rx, true, true, 32); //stream 2 bits 16x
 
     
     //pio_sm_set_pins_with_mask(pio, sm, 0, (1u << pin_sck) | (1u << pin_mosi));
