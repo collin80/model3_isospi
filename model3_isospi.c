@@ -61,27 +61,33 @@ void read_isospi_arm(PIO pio, uint sm, uint dma_chan, uint32_t *capture_buf, siz
     );
 
     //don't actually start up until the RX pins start to transition from the TX going live
-    pio_sm_exec(pio, sm, pio_encode_wait_gpio(trigger_level, trigger_pin));
+    pio_sm_exec(pio, sm, pio_encode_wait_gpio(trigger_level, trigger_pin + 1));
     pio_sm_set_enabled(pio, sm, true);
 }
 
 void print_capture_buf(const uint32_t *buf, uint pin_base, uint pin_count, uint32_t n_samples) {
-    // Display the capture buffer in text form, like this:
-    // 00: __--__--__--__--__--__--
-    // 01: ____----____----____----
     printf("Capture:\n");
-    uint record_size_bits = 32;
-    for (uint pin = 0; pin < pin_count; ++pin) {
-        printf("%02d: ", pin + pin_base);
-        for (uint32_t sample = 0; sample < n_samples; ++sample) {
-            uint bit_index = pin + sample * pin_count;
-            uint word_index = bit_index / record_size_bits;
-            // Data is left-justified in each FIFO entry, hence the (32 - record_size_bits) offset
-            uint word_mask = 1u << (bit_index % record_size_bits + 32 - record_size_bits);
-            printf(buf[word_index] & word_mask ? "-" : "_");
+        for (uint32_t sample = 0; sample < n_samples; ++sample)
+        {
+            uint bit_index = sample * pin_count;
+            uint word_index = bit_index / 32;
+            //uint word_mask = 3u << (bit_index % 32);
+            uint val = ( (buf[word_index] >> (bit_index % 32) ) & 3);
+            switch (val)
+            {
+            case 0:
+                printf(".");
+                break;
+            case 1:
+                printf("_");
+                break;
+            case 2:
+            case 3:
+                printf("-");
+                break;
+            }
         }
         printf("\n");
-    }
 }
 
 int main() 
