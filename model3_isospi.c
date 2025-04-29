@@ -150,6 +150,9 @@ void process_capture_buf(const uint32_t *buf, uint32_t n_samples) {
     //now we're in bits-ville USA. See if we start high or low then try to make bits
     //from it
 
+    int lastIdleSamples = 0;
+    bool masterBit = true;
+
     while (sampleIdx < n_samples)
     {
         //positive pulse?
@@ -172,7 +175,7 @@ void process_capture_buf(const uint32_t *buf, uint32_t n_samples) {
                 }
                 if (sampleDuration >= 6 && sampleDuration <= 13)
                 {
-                    printf("Positive bit!\n");
+                    printf("1");
                 }
             }
         }
@@ -197,7 +200,7 @@ void process_capture_buf(const uint32_t *buf, uint32_t n_samples) {
                 }
                 if (sampleDuration >= 6 && sampleDuration <= 13)
                 {
-                    printf("Negative bit!\n");
+                    printf("0");
                 }
             }
             //start of CS deassert?
@@ -212,7 +215,7 @@ void process_capture_buf(const uint32_t *buf, uint32_t n_samples) {
                 }
                 if (sampleDuration > 16)
                 {
-                    printf("CS finished. Ending!\n");
+                    printf("\nCS finished. Ending!\n");
                     return;
                 }
             }
@@ -227,7 +230,7 @@ void process_capture_buf(const uint32_t *buf, uint32_t n_samples) {
                 sampleIdx++;
                 if (sampleIdx >= n_samples) return;
             }
-            printf("Idle of %i samples\n", sampleDuration);
+            //printf("Idle of %i samples\n", sampleDuration);
         }
     }
 
@@ -277,7 +280,10 @@ int main()
         message[1] = 0xA1;
         message[2] = 0xCF;
         for (int i = 3; i < 76; i++) message[i] = 0;
+        read_isospi_arm(pio0, 1, dma_chan, capture_buf, 500, RX_BASE, true);
         isospi_write8_blocking(message, 76);
+        dma_channel_wait_for_finish_blocking(dma_chan);
+        process_capture_buf(capture_buf, 8000);
         //sleep_ms(1000);
         //printf("About to try pushing a 32 bit value with put\n");
         //pio_sm_put(spi.pio, spi.sm, 0xAA21FF57);        
