@@ -18,6 +18,17 @@
 //connect your RX pins to 10,11
 #define RX_BASE 10
 
+enum STATEMACHINE
+{
+    IDLE,
+    LONGPOS,
+    LONGNEG,
+    SHORTPOS_MASTER,
+    SHORTNEG_MASTER,
+    SHORTPOS_SLAVE,
+    SHORTNEG_SLAVE,
+};
+
 /*polling version of TX code. Try to place as many bytes into FIFO as we can. The FIFO
 is 32 bits but we're only using 8 so that we can send as individual bytes if needed. 
 Many messages are only 2 bytes so we do need this functionality. FIFO should be 4 long
@@ -65,29 +76,162 @@ void read_isospi_arm(PIO pio, uint sm, uint dma_chan, uint32_t *capture_buf, siz
     pio_sm_set_enabled(pio, sm, true);
 }
 
-void print_capture_buf(const uint32_t *buf, uint pin_base, uint pin_count, uint32_t n_samples) {
-    printf("Capture:\n");
-        for (uint32_t sample = 0; sample < n_samples; ++sample)
+void process_capture_buf(const uint32_t *buf, uint32_t n_samples) {
+    int8_t samples[n_samples];
+    for (uint32_t sample = 0; sample < n_samples; sample++)
+    {
+        uint bit_index = sample * 2;
+        uint word_index = bit_index / 32;
+        uint val = ( (buf[word_index] >> (bit_index % 32) ) & 3);
+        switch (val)
         {
-            uint bit_index = sample * pin_count;
-            uint word_index = bit_index / 32;
-            //uint word_mask = 3u << (bit_index % 32);
-            uint val = ( (buf[word_index] >> (bit_index % 32) ) & 3);
-            switch (val)
+        case 0:
+            samples[sample] = 0;
+            break;
+        case 1:
+            samples[sample] = -1;
+            break;
+        case 2:
+        case 3:
+            samples[sample] = 1;
+            break;
+        }
+        
+    }
+    //now have a list of all samples where we record what type of signal is found there (pos, neg, none)
+    
+    int sampleIdx = 0;
+    int sampleDuration = 0;
+    //look for a positive pulse
+    while (samples[sampleIdx] != 1)
+    {
+        sampleIdx++;
+        if (sampleIdx >= n_samples) return; //should not happen!
+    }
+    sampleDuration = 1;
+    while (samples[sampleIdx] == 1)
+    {
+        sampleDuration++;
+        sampleIdx++;
+        if (sampleIdx >= n_samples) return; //should not happen!
+    }
+    //hit the end of the positive pulse. Measure it.
+    if (sampleDuration < 17)
+    {
+        printf("Initial positive pulse too short!");
+        return;
+    }
+    while (samples[sampleIdx] != -1)
+    {
+        sampleIdx++;
+        if (sampleIdx >= n_samples) return; //should not happen!
+    }
+    sampleDuration = 1;
+    while (samples[sampleIdx] == -1)
+    {
+        sampleDuration++;
+        sampleIdx++;
+        if (sampleIdx >= n_samples) return; //should not happen!
+    }
+    if (sampleDuration < 17)
+    {
+        printf("Initial negative pulse too short!");
+        return;
+    }
+    printf("Got the CS active pulse!\n");
+    //gobble up any idles before the first bit
+    sampleDuration = 0;
+    while (samples[sampleIdx] == 0)
+    {
+        sampleDuration++;
+        sampleIdx++;
+        if (sampleIdx >= n_samples) return; //should not happen!
+    }
+    //now we're in bits-ville USA. See if we start high or low then try to make bits
+    //from it
+
+    while (sampleIdx < n_samples)
+    {
+        //positive pulse?
+        if (samples[sampleIdx] == 1)
+        {
+            sampleDuration = 1;
+            while (samples[sampleIdx] == 1)
             {
-            case 0:
-                printf(".");
-                break;
-            case 1:
-                printf("_");
-                break;
-            case 2:
-            case 3:
-                printf("-");
-                break;
+                sampleDuration++;
+                sampleIdx++;
+                if (sampleIdx >= n_samples) return; //should not happen!
+            }
+            if (sampleDuration >= 6 && sampleDuration <= 13)
+            {
+                sampleDuration = 1;
+                while (samples[sampleIdx] == -1)
+                {
+                    sampleDuration++;
+                    sampleIdx++;
+                }
+                if (sampleDuration >= 6 && sampleDuration <= 13)
+                {
+                    printf("Positive bit!\n");
+                }
             }
         }
-        printf("\n");
+
+        //negative pulse?
+        if (samples[sampleIdx] == -1)
+        {
+            sampleDuration = 1;
+            while (samples[sampleIdx] == -1)
+            {
+                sampleDuration++;
+                sampleIdx++;
+                if (sampleIdx >= n_samples) return; //should not happen!
+            }
+            if (sampleDuration >= 6 && sampleDuration <= 13)
+            {
+                sampleDuration = 1;
+                while (samples[sampleIdx] == 1)
+                {
+                    sampleDuration++;
+                    sampleIdx++;
+                }
+                if (sampleDuration >= 6 && sampleDuration <= 13)
+                {
+                    printf("Negative bit!\n");
+                }
+            }
+            //start of CS deassert?
+            if (sampleDuration > 16)
+            {
+                while (samples[sampleIdx++] != 1);
+                sampleDuration = 1;
+                while (samples[sampleIdx] == 1)
+                {
+                    sampleDuration++;
+                    sampleIdx++;
+                }
+                if (sampleDuration > 16)
+                {
+                    printf("CS finished. Ending!\n");
+                    return;
+                }
+            }
+        }
+
+        if (samples[sampleIdx] == 0)
+        {
+            sampleDuration = 1;
+            while (samples[sampleIdx] == 0)
+            {
+                sampleDuration++;
+                sampleIdx++;
+                if (sampleIdx >= n_samples) return;
+            }
+            printf("Idle of %i samples\n", sampleDuration);
+        }
+    }
+
+    printf("\n");
 }
 
 int main() 
@@ -126,7 +270,7 @@ int main()
         read_isospi_arm(pio0, 1, dma_chan, capture_buf, 500, RX_BASE, true);
         isospi_write8_blocking(message, 2);
         dma_channel_wait_for_finish_blocking(dma_chan);
-        print_capture_buf(capture_buf, RX_BASE, 2, 2500);
+        process_capture_buf(capture_buf, 1500);
         sleep_ms(1000);
         printf("About to try a long message\n");
         message[0] = 0x47;
