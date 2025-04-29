@@ -11,9 +11,9 @@ Just don't populate the FPGA and wire it to an RP2040 board instead. Or,
 make your own board without the FPGA interface. In any event, all credit
 for the hardware design goes to Damien, not me.
 
-Currently this code doesn't do a lot for you. It can generate 
-the Tesla specific isoSPI signals but does not yet read them
-nor really produce proper BMS traffic. That will come in time.
+Not currently a fully viable project. It sends two example isoSPI messages 
+and then reads them back as well. Somewhat basic and non-functional but
+testing is going well. Soon it will do something more useful
 
 The easiest approach to compiling this is to use VSCode. Download
 the Raspberry Pi Pico extension. It is able to download all the SDKs
